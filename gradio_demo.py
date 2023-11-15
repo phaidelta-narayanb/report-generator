@@ -22,7 +22,7 @@ import hashlib
 from gradio_pdf import PDF
 
 
-DEFAULT_PROMPT = "Describe the damages shown in the image and the locations of the damages, if they are visible."
+DEFAULT_PROMPT = "Describe what this image represents, as \"view of xyz\". xyz is the most prominent thing describing it, in about 10 words."
 
 DEFAULT_MARKDOWN_FORMAT = """
 ---
