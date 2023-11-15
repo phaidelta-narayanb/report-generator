@@ -35,7 +35,7 @@ output: pdf_document
 ## Detailed description
 
 {img_alt}|
----|
+---|---
 ![{img_alt}]({img_path}){{width=200px}} |
 {img_caption} |
 
