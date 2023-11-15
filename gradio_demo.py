@@ -67,9 +67,9 @@ def make_pdf(markdown_text: str, progress=gr.Progress(track_tqdm=True)) -> Tuple
         "pdf",
         format="md",
         outputfile=pdf_file_path,
-        extra_args=(
-            "--pdf-engine", "xelatex"
-        )
+        # extra_args=(
+        #     "--pdf-engine", "xelatex"
+        # )
     )
 
     return pdf_file_path, pdf_file_path
