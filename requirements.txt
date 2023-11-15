@@ -1,0 +1,2 @@
+gradio>=4.2.0
+gradio_pdf>=0.0.3
