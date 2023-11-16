@@ -82,10 +82,16 @@ def get_conv_log_filename():
 
 
 def get_model_list():
-    ret = requests.post(args.controller_url + "/refresh_all_workers")
-    assert ret.status_code == 200
-    ret = requests.post(args.controller_url + "/list_models")
-    models = ret.json()["models"]
+    models = []
+
+    try:
+        requests.post(args.controller_url + "/refresh_all_workers").raise_for_status()
+        ret = requests.post(args.controller_url + "/list_models")
+        ret.raise_for_status()
+        models.extend(ret.json()["models"])
+    except requests.HTTPError:
+        logger.exception("Failed to get model list from controller:")
+
     models.sort(key=lambda x: priority.get(x, x))
     logger.info(f"Models: {models}")
     return models
@@ -145,7 +151,7 @@ def clear_history(request: gr.Request):
     return (state, state.to_gradio_chatbot(), "", None) + (disable_btn,) * 5
 
 
-def add_text(state, text, image, image_process_mode, request: gr.Request):
+def add_text(state, system_message: str, text, image, image_process_mode, request: gr.Request):
     logger.info(f"add_text. ip: {request.client.host}. len: {len(text)}")
     if len(text) <= 0:
         text = DEFAULT_PROMPT
@@ -169,6 +175,8 @@ def add_text(state, text, image, image_process_mode, request: gr.Request):
         text = (text, image, image_process_mode)
         if len(state.get_images(return_pil=True)) > 0:
             state = default_conversation.copy()
+
+    state.system = system_message
     state.append_message(state.roles[0], text)
     state.append_message(state.roles[1], None)
     state.skip_next = False
@@ -213,6 +221,7 @@ def http_bot(state, model_selector, temperature, top_p, max_new_tokens, request:
         else:
             template_name = "vicuna_v1"
         new_state = conv_templates[template_name].copy()
+        new_state.system = state.system
         new_state.append_message(new_state.roles[0], state.messages[-2][1])
         new_state.append_message(new_state.roles[1], None)
         state = new_state
@@ -251,6 +260,7 @@ def http_bot(state, model_selector, temperature, top_p, max_new_tokens, request:
         "max_new_tokens": min(int(max_new_tokens), 1536),
         "stop": state.sep if state.sep_style in [SeparatorStyle.SINGLE, SeparatorStyle.MPT] else state.sep2,
         "images": f'List of {len(state.get_images())} images: {all_image_hash}',
+        "data": state.dict()
     }
     logger.info(f"==== request ====\n{pload}")
 
@@ -348,10 +358,11 @@ def build_demo(embed_mode):
                         value=models[0] if len(models) > 0 else "",
                         interactive=True,
                         show_label=True,
-                        container=False)
+                        container=False
+                    )
 
                 imagebox = gr.Image(type="pil")
-                submit_direct_btn = gr.Button(value="Submit", variant="primary")
+                submit_direct_btn = gr.Button(value="Submit pipeline", variant="primary")
                 image_process_mode = gr.Radio(
                     ["Crop", "Resize", "Pad", "Default"],
                     value="Default",
@@ -361,7 +372,7 @@ def build_demo(embed_mode):
                     temperature = gr.Slider(minimum=0.0, maximum=1.0, value=0.7, step=0.1, interactive=True, label="Temperature",)
                     top_p = gr.Slider(minimum=0.0, maximum=1.0, value=0.7, step=0.1, interactive=True, label="Top P",)
                     max_output_tokens = gr.Slider(minimum=0, maximum=1024, value=512, step=64, interactive=True, label="Max output tokens",)
-                    system_prompt = gr.Textbox(value=default_conversation.system, placeholder="System message", label="System message")
+                    system_prompt = gr.Textbox(value=default_conversation.system, lines=3, placeholder="System message", label="System message")
 
 
             with gr.Column(scale=8):
@@ -419,7 +430,7 @@ def build_demo(embed_mode):
 
         textbox.submit(
             add_text,
-            [state, textbox, imagebox, image_process_mode],
+            [state, system_prompt, textbox, imagebox, image_process_mode],
             [state, chatbot, textbox] + btn_list,
             queue=False
         ).then(
@@ -430,7 +441,7 @@ def build_demo(embed_mode):
 
         submit_btn.click(
             add_text,
-            [state, textbox, imagebox, image_process_mode],
+            [state, system_prompt, textbox, imagebox, image_process_mode],
             [state, chatbot, textbox] + btn_list,
             queue=False
         ).then(
@@ -454,7 +465,7 @@ def build_demo(embed_mode):
 
         submit_direct_btn.click(
             add_text,
-            [state, textbox, imagebox, image_process_mode],
+            [state, textbox, system_prompt, imagebox, image_process_mode],
             [state, chatbot, textbox] + btn_list,
             queue=False
         ).then(
