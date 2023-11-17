@@ -4,9 +4,10 @@ A model worker executes the model.
 import argparse
 import asyncio
 import json
+from logging import getLogger
 import time
 import threading
-from typing import Generator
+from typing import Generator, Any
 import uuid
 
 import openai
@@ -14,40 +15,34 @@ import openai
 from fastapi import FastAPI, Request, BackgroundTasks
 from fastapi.responses import StreamingResponse
 import requests
-import torch
 import uvicorn
 from functools import partial
 
-from llava.constants import WORKER_HEART_BEAT_INTERVAL
-from llava.utils import (build_logger, server_error_msg,
-    pretty_print_semaphore)
-from llava.mm_utils import process_images, load_image_from_base64, tokenizer_image_token, KeywordsStoppingCriteria
-from llava.constants import IMAGE_TOKEN_INDEX, DEFAULT_IMAGE_TOKEN, DEFAULT_IM_START_TOKEN, DEFAULT_IM_END_TOKEN
-from transformers import TextIteratorStreamer
-from threading import Thread
 
+WORKER_HEART_BEAT_INTERVAL = 15
+SERVER_ERROR_MESSAGE = (
+    "**NETWORK ERROR DUE TO HIGH TRAFFIC. PLEASE REGENERATE OR REFRESH THIS PAGE.**"
+)
 
 GB = 1 << 30
 
 worker_id = str(uuid.uuid4())[:6]
-logger = build_logger("model_worker", f"model_worker_{worker_id}.log")
+logger = getLogger(__name__)
 global_counter = 0
 
 model_semaphore = None
 
 
 def heart_beat_worker(controller):
-
     while True:
         time.sleep(WORKER_HEART_BEAT_INTERVAL)
         controller.send_heart_beat()
 
 
 class ModelWorker:
-    def __init__(self, controller_addr, worker_addr,
-                 worker_id, no_register,
-                 model_name
-                ):
+    def __init__(
+        self, controller_addr, worker_addr, worker_id, no_register, model_name
+    ):
         self.controller_addr = controller_addr
         self.worker_addr = worker_addr
         self.worker_id = worker_id
@@ -56,9 +51,9 @@ class ModelWorker:
         if not no_register:
             self.register_to_controller()
             self.heart_beat_thread = threading.Thread(
-                target=heart_beat_worker, args=(self,))
+                target=heart_beat_worker, args=(self,)
+            )
             self.heart_beat_thread.start()
-
 
     def register_to_controller(self):
         logger.info("Register to controller")
@@ -67,23 +62,30 @@ class ModelWorker:
         data = {
             "worker_name": self.worker_addr,
             "check_heart_beat": True,
-            "worker_status": self.get_status()
+            "worker_status": self.get_status(),
         }
         r = requests.post(url, json=data)
         assert r.status_code == 200
 
     def send_heart_beat(self):
-        logger.info(f"Send heart beat. Models: {[self.model_name]}. "
-                    f"Semaphore: {pretty_print_semaphore(model_semaphore)}. "
-                    f"global_counter: {global_counter}")
+        logger.info(
+            f"Send heart beat. Models: {[self.model_name]}. "
+            f"Semaphore: {repr(model_semaphore)}. "
+            f"global_counter: {global_counter}"
+        )
 
         url = self.controller_addr + "/receive_heart_beat"
 
         while True:
             try:
-                ret = requests.post(url, json={
-                    "worker_name": self.worker_addr,
-                    "queue_length": self.get_queue_length()}, timeout=5)
+                ret = requests.post(
+                    url,
+                    json={
+                        "worker_name": self.worker_addr,
+                        "queue_length": self.get_queue_length(),
+                    },
+                    timeout=5,
+                )
                 exist = ret.json()["exist"]
                 break
             except requests.exceptions.RequestException as e:
@@ -97,8 +99,15 @@ class ModelWorker:
         if model_semaphore is None:
             return 0
         else:
-            return args.limit_model_concurrency - model_semaphore._value + (len(
-                model_semaphore._waiters) if model_semaphore._waiters is not None else 0)
+            return (
+                args.limit_model_concurrency
+                - model_semaphore._value
+                + (
+                    len(model_semaphore._waiters)
+                    if model_semaphore._waiters is not None
+                    else 0
+                )
+            )
 
     def get_status(self):
         return {
@@ -108,7 +117,9 @@ class ModelWorker:
         }
 
     @staticmethod
-    def openai_completion_response_streaming(orig_prompt, **kwargs):
+    def openai_completion_response_streaming(
+        orig_prompt, **kwargs
+    ) -> Generator[bytes, Any, None]:
         generated_text = orig_prompt
         streamer = openai.chat.completions.create(stream=True, **kwargs)
         for new_chunk in streamer:
@@ -118,10 +129,11 @@ class ModelWorker:
                     new_text = c0.delta.content
                     generated_text += new_text
 
-                    yield json.dumps({"text": generated_text, "error_code": 0}).encode() + b"\0"
+                    yield json.dumps(
+                        {"text": generated_text, "error_code": 0}
+                    ).encode() + b"\0"
 
-
-    def generate_stream(self, params):
+    def generate_stream(self, params) -> Generator[bytes, Any, None]:
         gpt_args = {
             "model": params["model"],
             "messages": [],
@@ -133,10 +145,7 @@ class ModelWorker:
         messages = gpt_args["messages"]
 
         if params["data"]["system"] is not None and len(params["data"]["system"]) > 0:
-            messages.append({
-                "role": "system",
-                "content": params["data"]["system"]
-            })
+            messages.append({"role": "system", "content": params["data"]["system"]})
 
         for msg in params["data"]["messages"]:
             new_msg = {}
@@ -144,21 +153,23 @@ class ModelWorker:
             new_msg["content"] = []
 
             if msg[1] is not None:
-                new_msg["content"].append({
-                    "type": "text",
-                    "text": msg[1]
-                })
+                new_msg["content"].append({"type": "text", "text": msg[1]})
 
                 if "<image>" in msg[1]:
-                    new_msg["content"].append({
-                        "type": "image_url",
-                        "image_url": "data:image/jpeg;base64," + params["images"][0]
-                    })
+                    new_msg["content"].append(
+                        {
+                            "type": "image_url",
+                            "image_url": "data:image/jpeg;base64,"
+                            + params["images"][0],
+                        }
+                    )
 
             if len(new_msg["content"]) > 0:
                 messages.append(new_msg)
 
-        yield from self.openai_completion_response_streaming(params["prompt"], **gpt_args)
+        yield from self.openai_completion_response_streaming(
+            params["prompt"], **gpt_args
+        )
 
     def generate_stream_gate(self, params):
         try:
@@ -167,21 +178,14 @@ class ModelWorker:
         except ValueError as e:
             print("Caught ValueError:", e)
             ret = {
-                "text": server_error_msg,
-                "error_code": 1,
-            }
-            yield json.dumps(ret).encode() + b"\0"
-        except torch.cuda.CudaError as e:
-            print("Caught torch.cuda.CudaError:", e)
-            ret = {
-                "text": server_error_msg,
+                "text": SERVER_ERROR_MESSAGE,
                 "error_code": 1,
             }
             yield json.dumps(ret).encode() + b"\0"
         except Exception as e:
             print("Caught Unknown Error", e)
             ret = {
-                "text": server_error_msg,
+                "text": SERVER_ERROR_MESSAGE,
                 "error_code": 1,
             }
             yield json.dumps(ret).encode() + b"\0"
@@ -208,7 +212,9 @@ async def generate_stream(request: Request):
     worker.send_heart_beat()
     generator = worker.generate_stream_gate(params)
     background_tasks = BackgroundTasks()
-    background_tasks.add_task(partial(release_model_semaphore, fn=worker.send_heart_beat))
+    background_tasks.add_task(
+        partial(release_model_semaphore, fn=worker.send_heart_beat)
+    )
     return StreamingResponse(generator, background=background_tasks)
 
 
@@ -221,10 +227,10 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--host", type=str, default="localhost")
     parser.add_argument("--port", type=int, default=21002)
-    parser.add_argument("--worker-address", type=str,
-        default="http://localhost:21002")
-    parser.add_argument("--controller-address", type=str,
-        default="http://localhost:21001")
+    parser.add_argument("--worker-address", type=str, default="http://localhost:21002")
+    parser.add_argument(
+        "--controller-address", type=str, default="http://localhost:21001"
+    )
     parser.add_argument("--model-name", type=str, default="gpt-4-vision-preview")
     parser.add_argument("--limit-model-concurrency", type=int, default=5)
     parser.add_argument("--stream-interval", type=int, default=1)
@@ -232,10 +238,11 @@ if __name__ == "__main__":
     args = parser.parse_args()
     logger.info(f"args: {args}")
 
-    worker = ModelWorker(args.controller_address,
-                         args.worker_address,
-                         worker_id,
-                         args.no_register,
-                         args.model_name
-                         )
+    worker = ModelWorker(
+        args.controller_address,
+        args.worker_address,
+        worker_id,
+        args.no_register,
+        args.model_name,
+    )
     uvicorn.run(app, host=args.host, port=args.port, log_level="info")
