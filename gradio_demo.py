@@ -22,7 +22,7 @@ import hashlib
 from gradio_pdf import PDF
 
 
-DEFAULT_PROMPT = "Describe what this image represents, as \"view of xyz\". xyz is the most prominent thing describing it, in about 10 words."
+DEFAULT_PROMPT = "Describe what this image represents in about 10 words."
 
 DEFAULT_MARKDOWN_FORMAT = """
 ---
@@ -40,6 +40,14 @@ output: pdf_document
 {img_caption} |
 
 """
+
+PROMPT_EXAMPLES = [
+    ("House Fire", """You are an expert in describing images for insurance. You are given an image that was taken by a client for insurance claim due to a house fire. Many angles were captured (front, side, inside, before, after, closeup). You need to describe based on the image given what it represents as "view of xyz" where xyz is the most prominent thing describing it, in about 10 words."""),
+    ("Tornado pharma", """You are an expert in describing images for insurance. You are given an image that was taken by a client for insurance claim as a Tornado has obliterated a major Pfizer pharmaceutical plant. Many angles were captured (front, side, inside, before, after, closeup). You need to describe based on the image given what it represents as "view of xyz" where xyz is the most prominent thing describing it, in about 10 words."""),
+    ("Car accident into house", """You are an expert in describing images for insurance. You are given an image that was taken by a client for insurance claim due to a vehicle that accidentally drove into the house of the client. Many angles were captured (front, side, inside, before, after, closeup). You need to describe based on the image given what it represents as "view of xyz" where xyz is the most prominent thing describing it, in about 10 words."""),
+    ("Tornado house", """You are an expert in describing images for insurance. You are given an image that was taken by a client for insurance claim for the client's house that was damaged by a tornado. Many angles were captured (front, side, inside, before, after, closeup). You need to describe based on the image given what it represents as "view of xyz" where xyz is the most prominent thing describing it, in about 10 words."""),
+    ("Flood car", """You are an expert in describing images for insurance. You are given an image that was taken by a client for insurance claim for a flood that has taken place and has a car submerged. Many angles were captured (front, side, inside, before, after, closeup). You need to describe based on the image given what it represents as "view of xyz" where xyz is the most prominent thing describing it, in about 10 words."""),
+]
 
 
 logger = build_logger("gradio_web_server", "gradio_web_server.log")
@@ -89,7 +97,7 @@ def get_model_list():
         ret = requests.post(args.controller_url + "/list_models")
         ret.raise_for_status()
         models.extend(ret.json()["models"])
-    except requests.HTTPError:
+    except (requests.HTTPError, requests.ConnectionError):
         logger.exception("Failed to get model list from controller:")
 
     models.sort(key=lambda x: priority.get(x, x))
@@ -368,6 +376,10 @@ def build_demo(embed_mode):
                     value="Default",
                     label="Preprocess for non-square image", visible=False)
 
+                with gr.Row(variant="compact"):
+                    eg_select_prompt = gr.Dropdown(PROMPT_EXAMPLES, label="Situation", container=False, show_label=True)
+                    eg_prompt_go = gr.Button("Set", variant="secondary")
+
                 with gr.Accordion("Parameters", open=False) as parameter_row:
                     temperature = gr.Slider(minimum=0.0, maximum=1.0, value=0.7, step=0.1, interactive=True, label="Temperature",)
                     top_p = gr.Slider(minimum=0.0, maximum=1.0, value=0.7, step=0.1, interactive=True, label="Top P",)
@@ -404,6 +416,9 @@ def build_demo(embed_mode):
         url_params = gr.JSON(visible=False)
 
         # Register listeners
+
+        eg_prompt_go.click(lambda x: x, inputs=eg_select_prompt, outputs=system_prompt)
+
         btn_list = [
             regenerate_btn,
             clear_btn,
@@ -493,7 +508,7 @@ def build_demo(embed_mode):
                 load_demo,
                 [url_params],
                 [state, model_selector],
-                _js=get_window_url_params,
+                js=get_window_url_params,
                 queue=False
             )
         elif args.model_list_mode == "reload":
