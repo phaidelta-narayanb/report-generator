@@ -3,7 +3,9 @@ import datetime
 import json
 import os
 import time
+
 from typing import Tuple
+from collections.abc import Mapping
 
 import gradio as gr
 from gradio_pdf import PDF
@@ -17,7 +19,7 @@ from jinja2 import FileSystemLoader, Environment
 from llava.conversation import (Conversation, default_conversation,
                                    SeparatorStyle)
 from llava.constants import LOGDIR
-from llava.utils import build_logger, server_error_msg
+from llava.utils import build_logger
 
 
 from reportgen.report_maker import ReportMaker
@@ -26,36 +28,28 @@ from reportgen.utils import image2b64
 from reportgen.config import Settings as AppSettings
 
 
-DEFAULT_CONVERSATION = default_conversation.copy()
-DEFAULT_CONVERSATION.system = """You are an expert in describing images for insurance. You are given an image that was taken by a client for insurance claim. Many angles were captured (front, side, inside, before, after, closeup, split before/after). You need to describe based on the image given what it represents as "view of xyz" where xyz is the most prominent thing describing it, in about 10 words. Following is the description of the accident, along with the image."""
+def get_new_conversation():
+    settings = AppSettings()
+    conv = default_conversation.copy()
+    conv.system = settings.client.system_prompt
+    return conv
 
+def get_user_prompts():
+    def _fix_prompt_item(i):
+        if isinstance(i, Mapping):
+            return next(iter(i.items()))
+        return i
 
-# PROMPT_EXAMPLES = [
-#     ("House Fire", """You are an expert in describing images for insurance. You are given an image that was taken by a client for insurance claim due to a house fire. Many angles were captured (front, side, inside, before, after, closeup). You need to describe based on the image given what it represents as "view of xyz" where xyz is the most prominent thing describing it, in about 10 words."""),
-#     ("Tornado pharma", """You are an expert in describing images for insurance. You are given an image that was taken by a client for insurance claim as a Tornado has obliterated a major Pfizer pharmaceutical plant. Many angles were captured (front, side, inside, before, after, closeup). You need to describe based on the image given what it represents as "view of xyz" where xyz is the most prominent thing describing it, in about 10 words."""),
-#     ("Car accident into house", """You are an expert in describing images for insurance. You are given an image that was taken by a client for insurance claim due to a vehicle that accidentally drove into the house of the client. Many angles were captured (front, side, inside, before, after, closeup). You need to describe based on the image given what it represents as "view of xyz" where xyz is the most prominent thing describing it, in about 10 words."""),
-#     ("Tornado house", """You are an expert in describing images for insurance. You are given an image that was taken by a client for insurance claim for the client's house that was damaged by a tornado. Many angles were captured (front, side, inside, before, after, closeup). You need to describe based on the image given what it represents as "view of xyz" where xyz is the most prominent thing describing it, in about 10 words."""),
-#     ("Flood car", """You are an expert in describing images for insurance. You are given an image that was taken by a client for insurance claim for a flood that has taken place and has a car submerged. Many angles were captured (front, side, inside, before, after, closeup). You need to describe based on the image given what it represents as "view of xyz" where xyz is the most prominent thing describing it, in about 10 words."""),
-# ]
+    settings = AppSettings()
+    return list(map(_fix_prompt_item, settings.client.user_prompts))
 
-
-PROMPT_EXAMPLES = [
-    ("House Fire", """Insurance claim due to a house fire"""),
-    ("Tornado pharma", """Insurance claim as a Tornado has obliterated a major pharmaceutical plant"""),
-    ("Car accident into house", """Insurance claim due to a vehicle that accidentally drove into the house of the client."""),
-    ("Tornado house", """Insurance claim for the client's house that was damaged by a tornado."""),
-    ("Flood car", """Insurance claim for a flood that has taken place and has a car submerged."""),
-]
 
 logger = build_logger("gradio_web_server", "gradio_web_server.log")
 
 headers = {"User-Agent": "LLaVA Client"}
 
-no_change_btn = gr.Button()
-enable_btn = gr.Button(interactive=True)
-disable_btn = gr.Button(interactive=False)
 
-priority = {
+MODEL_SORT_PRIORITY = {
     "vicuna-13b": "aaaaaaa",
     "koala-13b": "aaaaaab",
 }
@@ -66,7 +60,7 @@ def change_name(model: str) -> Tuple:
         return ("GPT (OpenAI)", model)
     if 'llava' in model:
         return ("LLaVA (Open Source)", model)
-    return (model, model)
+    return model
 
 
 def get_conv_log_filename():
@@ -86,7 +80,7 @@ def get_model_list():
     except (requests.HTTPError, requests.ConnectionError):
         logger.exception("Failed to get model list from controller:")
 
-    models.sort(key=lambda x: priority.get(x, x))
+    models.sort(key=lambda x: MODEL_SORT_PRIORITY.get(x, x))
     logger.info(f"Models: {models}")
 
     models = list(map(change_name, models))
@@ -116,14 +110,14 @@ def load_demo(url_params, request: gr.Request):
                 show_label=True
             )
 
-    state = DEFAULT_CONVERSATION.copy()
+    state = get_new_conversation()
     return state, dropdown_update
 
 
 def load_demo_refresh_model_list(request: gr.Request):
     logger.info(f"load_demo. ip: {request.client.host}")
     models = get_model_list()
-    state = DEFAULT_CONVERSATION.copy()
+    state = get_new_conversation()
 
     dropdown_update = gr.update(
         choices=models,
@@ -155,7 +149,7 @@ def do_submit_image_prompt(model_name: str, state: Conversation, files: list, si
     img_captioned = []
 
     if situation_prompt is None or len(situation_prompt) == 0:
-        situation_prompt = "An accident occured"
+        situation_prompt = "An accident occurred"
 
     for img_file in progress.tqdm(files, desc="Producing caption"):
         state_copy = state.copy()
@@ -204,16 +198,17 @@ def do_submit_image_prompt(model_name: str, state: Conversation, files: list, si
                     if data["error_code"] == 0:
                         final_output = data["text"][len(prompt):].strip()
                         # state.messages[-1][-1] = output + "▌"
-                        # yield (state, state.to_gradio_chatbot()) + (disable_btn,) * 5
+                        # yield (state, state.to_gradio_chatbot())
                     else:
                         output = data["text"] + f" (error_code: {data['error_code']})"
                         raise Exception("Chat model failed with error: %s" % output)
                         # state.messages[-1][-1] = output
-                        # yield (state, state.to_gradio_chatbot()) + (disable_btn, disable_btn, disable_btn, enable_btn, enable_btn)
+                        # yield (state, state.to_gradio_chatbot())
                         return
                     time.sleep(0.03)
         except requests.exceptions.RequestException as e:
-            raise Exception("Error running prompt: %s" % server_error_msg)
+            logger.exception("Error running prompt:")
+            raise e
 
         logger.info("Prompt complete: %s", final_output)
         img_captioned.append((
@@ -225,22 +220,26 @@ def do_submit_image_prompt(model_name: str, state: Conversation, files: list, si
 
 
 def do_make_template(captioned_images) -> str:
+    settings = AppSettings()
+    report_settings = settings.customer.report
+
     return ReportMaker(
-        template_env=Environment(loader=FileSystemLoader(searchpath="./templates/")),
+        template_env=Environment(loader=FileSystemLoader(searchpath=report_settings.templates_dir)),
         additional_static_kwargs={
-            "logo_url": "https://www.mclarens.com/wp-content/themes/mclarens/img/Mclarens-Logo.png",
+            "logo_url": report_settings.logo_image_url,
         }
     ).from_template(
-        "report_template.j2.html",
+        report_settings.report_template_file,
         img_captions=captioned_images
     )
 
 
 def do_export_report(report_text: str, progress=gr.Progress()) -> Tuple[str, str]:
-    tdqm_iter = progress.tqdm(range(2), desc="Generating PDF")
-    report_file = ReportExporter(
-        method="weasyprint",
-    ).make_pdf(report_text)
+    settings = AppSettings()
+    report_settings = settings.customer.report
+
+    tdqm_iter = progress.tqdm(range(1), desc="Generating PDF")
+    report_file = ReportExporter(method=report_settings.export_method).make_pdf(report_text)
     tdqm_iter.update()
 
     return report_file, gr.update(visible=True, value=report_file)
@@ -268,7 +267,7 @@ def build_demo(embed_mode):
 
                 with gr.Row(variant="compact"):
                     eg_select_prompt = gr.Dropdown(
-                        PROMPT_EXAMPLES,
+                        get_user_prompts(),
                         label="Incident claim type",
                         allow_custom_value=True
                     )
@@ -293,11 +292,11 @@ def build_demo(embed_mode):
                             variant="primary",
                             scale=1
                         )
+
                 with gr.Accordion("Parameters", open=False, visible=False) as parameter_row:
                     temperature = gr.Slider(minimum=0.0, maximum=1.0, value=0.7, step=0.1, interactive=True, label="Temperature",)
                     top_p = gr.Slider(minimum=0.0, maximum=1.0, value=0.7, step=0.1, interactive=True, label="Top P",)
                     max_output_tokens = gr.Slider(minimum=0, maximum=1024, value=512, step=64, interactive=True, label="Max output tokens",)
-                    system_prompt = gr.Textbox(value=default_conversation.system, lines=3, placeholder="System message", label="System message")
 
             with gr.Column(scale=8):
                 out_pdf = PDF(label="Preview")
@@ -333,7 +332,7 @@ def build_demo(embed_mode):
             inputs=in_txt,
             outputs=[out_pdf, download_file],
             trigger_mode='always_last',
-            show_progress='minimal'
+            show_progress='full'
         )
 
         # Only generate PDF from code
@@ -342,7 +341,7 @@ def build_demo(embed_mode):
             inputs=in_txt,
             outputs=[out_pdf, download_file],
             trigger_mode='always_last',
-            show_progress='minimal'
+            show_progress='full'
         )
 
         if args.model_list_mode == "once":
