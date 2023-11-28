@@ -5,9 +5,10 @@ RUN python3 -m pip install -q --upgrade pip
 
 WORKDIR /app
 
+RUN python3 -m pip install -q -e git+https://github.com/haotian-liu/LLaVA.git@8467850a63aa0d6f47aa150c53aca4751f0d3d14#egg=llava
+
 COPY . .
 
-RUN python3 -m pip install -q -e git+https://github.com/haotian-liu/LLaVA.git@8467850a63aa0d6f47aa150c53aca4751f0d3d14#egg=llava
 RUN python3 -m pip install -q --upgrade -r requirements.txt
 
 CMD ["/usr/bin/bash", "run.sh"]
