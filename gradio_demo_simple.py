@@ -27,7 +27,7 @@ from reportgen.config import Settings as AppSettings
 
 
 DEFAULT_CONVERSATION = default_conversation.copy()
-DEFAULT_CONVERSATION.system = """You are an expert in describing images for insurance. You are given an image that was taken by a client for insurance claim. Many angles were captured (front, side, inside, before, after, closeup, split before/after). Describe based on the image given what it represents as "view of xyz" where xyz is the most prominent thing describing it, in about 10 words."""
+DEFAULT_CONVERSATION.system = """You are an expert in describing images for insurance. You are given an image that was taken by a client for insurance claim. Many angles were captured (front, side, inside, before, after, closeup, split before/after). You need to describe based on the image given what it represents as "view of xyz" where xyz is the most prominent thing describing it, in about 10 words. Following is the description of the accident, along with the image."""
 
 
 # PROMPT_EXAMPLES = [
@@ -175,6 +175,7 @@ def do_submit_image_prompt(model_name: str, state: Conversation, files: list, si
         logger.info("Situation: %s", situation_prompt)
 
         prompt = state_copy.get_prompt()
+        logger.info("Entire prompt: %s", prompt)
 
         chat_payload = {
             "model": model_name,
