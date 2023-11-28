@@ -1,0 +1,50 @@
+{% extends "report_base.j2.html" %}
+
+{% block title %}Report{% endblock %}
+
+{% block head %}
+{{ super() }}
+<style>
+    table.attachment-image-caption {
+        width: 100%;
+    }
+    table.attachment-image-caption td {
+        text-align: left;
+        vertical-align: top;
+    }
+    table.attachment-image-caption td:first-child {
+        width: 1px;
+    }
+    table.attachment-image-caption td > img {
+        max-width: 25rem;
+        padding: 2px;
+        display: inline-block;
+        /* border: 1px solid black; */
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<header>
+    {% include 'mclarens_header_main.j2.html' %}
+</header>
+
+{% include 'mclarens_insurance_template.j2.html' %}
+
+<hr class="pagebreak" />
+
+<h2>Attachment</h2>
+
+{% for image_url, caption in img_captions %}
+<table class="attachment-image-caption">
+    <tr>
+        <td><img alt="Image" src="{{ image_url }}" /></td>
+        <td>{{ caption }}</td>
+    </tr>
+</table>
+<hr class="pagebreak" />
+{% endfor %}
+
+<h2>End of  report</h2>
+
+{% endblock %}

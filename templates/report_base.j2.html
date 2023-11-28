@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    {% block head %}
+    <title>{% block title %}Report template{% endblock %}</title>
+    <style>
+        @media print {
+            .pagebreak { page-break-before: always; visibility: hidden; }
+        }
+
+        .logo-big {
+            max-height: 4rem;
+        }
+
+        .float-right {
+            float: right;
+        }
+
+        .header-addr {
+            width: 100%;
+            font-size: 8pt;
+            margin-bottom: 4rem;
+        }
+
+        .focus-heading {
+            text-decoration: underline;
+            text-transform: uppercase;
+            font-weight: bold;
+        }
+    </style>
+    {% endblock %}
+</head>
+<body>
+    <div id="content">{% block content %}{% endblock %}</div>
+</body>
+</html>

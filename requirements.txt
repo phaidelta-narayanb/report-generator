@@ -1,4 +1,8 @@
 gradio>=4.2.0
 gradio_pdf>=0.0.3
-pypandoc
+# pypandoc
+weasyprint
 openai
+jinja2
+pydantic
+pydantic-settings-yaml
