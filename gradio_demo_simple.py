@@ -40,11 +40,11 @@ DEFAULT_CONVERSATION.system = """You are an expert in describing images for insu
 
 
 PROMPT_EXAMPLES = [
-    ("House Fire", """Insurance claim due to a house fire: in 10 words as "view of xyz"."""),
-    ("Tornado pharma", """Insurance claim as a Tornado has obliterated a major pharmaceutical plant: in 10 words as "view of xyz"."""),
-    ("Car accident into house", """Insurance claim due to a vehicle that accidentally drove into the house of the client: in 10 words as "view of xyz"."""),
-    ("Tornado house", """Insurance claim for the client's house that was damaged by a tornado: in 10 words as "view of xyz"."""),
-    ("Flood car", """Insurance claim for a flood that has taken place and has a car submerged: in 10 words as "view of xyz"."""),
+    ("House Fire", """Insurance claim due to a house fire"""),
+    ("Tornado pharma", """Insurance claim as a Tornado has obliterated a major pharmaceutical plant"""),
+    ("Car accident into house", """Insurance claim due to a vehicle that accidentally drove into the house of the client."""),
+    ("Tornado house", """Insurance claim for the client's house that was damaged by a tornado."""),
+    ("Flood car", """Insurance claim for a flood that has taken place and has a car submerged."""),
 ]
 
 logger = build_logger("gradio_web_server", "gradio_web_server.log")
