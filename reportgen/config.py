@@ -16,8 +16,8 @@ class ClientSettings(BaseModel):
 
 
 class ReportSettings(BaseModel):
-    templates_dir: Path = Path("templates/")
-    report_template_file: Path
+    templates_dir: str = "templates/"
+    report_template_file: str
     export_method: Literal["pandoc", "weasyprint"] = "pandoc"
 
     logo_image_url: Optional[str] = None

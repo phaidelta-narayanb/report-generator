@@ -56,7 +56,7 @@ MODEL_SORT_PRIORITY = {
 
 
 def change_name(model: str) -> Tuple:
-    if "gpt" in model:
+    if 'gpt' in model:
         return ("GPT (OpenAI)", model)
     if 'llava' in model:
         return ("LLaVA (Open Source)", model)
@@ -283,16 +283,6 @@ def build_demo(embed_mode):
                     value="Default",
                     label="Preprocess for non-square image", visible=False)
 
-                with gr.Accordion("Report Template", open=False):
-                    in_txt = gr.Code(language="html")
-                    with gr.Row(variant="compact"):
-                        generate_pdf_btn = gr.Button(
-                            value="Generate Now",
-                            size="sm",
-                            variant="primary",
-                            scale=1
-                        )
-
                 with gr.Accordion("Parameters", open=False, visible=False) as parameter_row:
                     temperature = gr.Slider(minimum=0.0, maximum=1.0, value=0.7, step=0.1, interactive=True, label="Temperature",)
                     top_p = gr.Slider(minimum=0.0, maximum=1.0, value=0.7, step=0.1, interactive=True, label="Top P",)
@@ -302,8 +292,19 @@ def build_demo(embed_mode):
                 out_pdf = PDF(label="Preview")
                 download_file = gr.File(label="Download report", visible=False)
 
+        with gr.Row():
+            with gr.Accordion("Report Template", open=False):
+                in_txt = gr.Code(language="html")
+                with gr.Row(variant="compact"):
+                    generate_pdf_btn = gr.Button(
+                        value="Generate Now",
+                        size="sm",
+                        variant="primary",
+                        scale=1
+                    )
 
         url_params = gr.JSON(visible=False)
+
 
         # Register listeners
 
